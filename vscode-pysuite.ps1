@@ -275,17 +275,14 @@ if __name__ == "__main__":
     $python_root_path = "C:\LegacyApp\Python39"
     $file_name = "$python_root_path\pyenv.py"
     if (Test-Path $file_name) {
-        Write-Host "[!] - File $file_name already exists. Removing it... "
-        Remove-Item -Force $file_name
+        Write-Host "[+] - File $file_name already exists. "
     } else {
         Write-Host "[+] - Creating file '$file_name' ... "
+        New-Item $file_name -ItemType "file" >> $null
+        Add-Content $file_name $file_content
+        Write-Host "[+] - Creating file '$file_name' ... "
     }
-    New-Item $file_name -ItemType "file" >> $null
-    Add-Content $file_name $file_content
-    Write-Host "[+] - Creating file '$file_name' ... "
 }
-
-
 
 # Main flow for .ps1 file.
 function autoTitle {
