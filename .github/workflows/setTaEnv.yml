@@ -1,0 +1,93 @@
+#==========================================================================================
+# Author: Solorzano, Juan Jose
+# Date: 25-03-2025
+#------------------------------------------------------------------------------------------
+# Description:
+# This is a GitHub Actions workflow file for building and releasing a vscode extension.
+# The workflow is triggered on push events to the master branch (pull-request included) or when a versioned tag is pushed.
+# One Job is divided into three sub-jobs: build, deploy, and release. In a way to practice the CI/CD process, the three sub-jobs are separated.
+# Having the three sub-jobs separated pushes you to use environment variables to share data between jobs.
+#==========================================================================================
+
+# Name identification for the workflow
+name: CI & Release Workflow 
+
+on:  # Triggers the workflow on specific events
+  push: # when pushing the master branch or pushing a tag
+    branches:
+      - master
+    tags:
+      - 'v*'  # Triggers release when pushing versioned tags (e.g., v1.0.0)
+  pull_request: # when creating a pull request to the master branch
+    branches: # Only run on pull requests targeting the master branch
+      - master
+
+# Permissions for the workflow
+permissions:
+  contents: write  # Needed for GitHub Releases
+  id-token: write
+
+# Job to build the VS Code extension
+jobs:
+  build:
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest # Tells GitHub to run the job on the latest VM image available for Ubuntu.
+    steps: # Steps to be executed in the job
+      - name: Checkout repository # clone the repository to the GitHub workspace
+        uses: actions/checkout@v3
+      # From here, the following steps are executed to install dependencies, build the extension, and package it into a .vsix file.
+      # Same steps that you would do locally to build the extension.
+      - name: Install GCC and G++
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential 
+      - name: Check GCC Installation
+        run: gcc --version
+        continue-on-error: false
+      - name: Build and Package # Go to the workspace directory and run the build command
+        run: | #${GITHUB_WORKSPACE} is the default directory where the repository is checked out.
+          cd $GITHUB_WORKSPACE 
+          gcc .\set_TA_env_console.c .\ta_ico.o -o set_TA_env_1.0.0.exe
+      
+      - name: "Get File Name"
+        run: |
+          file_name=$(ls -1 *.exe | head -n 1) # Get the name of the first .vsix file in the directory.
+          echo "EXE_FILE=$file_name" >> $GITHUB_ENV # Set the file location as an environment variable
+      
+      # Upload the .vsix file as an artifact (cloud server) for later use in the release job.
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-artifact # Name of the artifact to be uploaded
+          path: ${{ env.EXE_FILE }}  # Use the environment variable set in the previous step
+#NOTE:
+# Between jobs (build and release), either dependencies or repository files are shared, so, it is necessary 
+# to checkout the repository again in the release job.
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+  #NOTE: Only will be ran for tag-based releases
+    if: startsWith(github.ref_name, 'v')  
+    steps: # Dependencies steps are the same as in the build job.
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      # Download the artifact from the build job.
+      - name: Download VSIX Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix-artifact
+          path: .
+      #NOTE: Set a release version based on the tag name.
+      - name: Find VSIX File
+        run: |
+          file_name=$(ls -1 *.exe | head -n 1) # Get the name of the downloaded .exe file.
+          echo "EXE_FILE=$file_name" >> $GITHUB_ENV # Set the file location as an environment variable
+      #NOTE: Start the upload process to GitHub Releases.
+      - name: Upload VSIX to GitHub Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.EXE_FILE }} # Adjust the path if the .vsix is located elsewhere
+          tag: ${{ github.ref_name }} # Use the tag name for the release
+          body: "🚀 New release of the VS Code extension!"
+          overwrite: false
